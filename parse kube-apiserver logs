@@ -1,0 +1,50 @@
+#!/bin/bash
+
+# Ensure a log file is provided as the first argument
+if [ -z "$1" ]; then
+  echo "Usage: $0 <logfile>"
+  exit 1
+fi
+
+LOG_FILE="$1"
+
+# Check if the log file exists
+if [ ! -f "$LOG_FILE" ]; then
+  echo "Error: Log file '$LOG_FILE' not found!"
+  exit 1
+fi
+
+# Parse etcd connectivity issues
+echo "Analyzing etcd connectivity issues..."
+ETCD_ERRORS=$(grep "grpc: addrConn.createTransport failed to connect" "$LOG_FILE")
+
+if [ -z "$ETCD_ERRORS" ]; then
+  echo "No etcd connectivity issues found."
+else
+  echo "etcd connectivity issues detected."
+  
+  # Extract the first and last occurrence of connection failures
+  FIRST_FAILURE=$(echo "$ETCD_ERRORS" | head -n 1 | awk '{print $1 " " $2}')
+  LAST_RECOVERY=$(grep -A 1 "grpc: addrConn.createTransport failed to connect" "$LOG_FILE" | \
+                  grep -v "grpc: addrConn.createTransport failed to connect" | \
+                  head -n 1 | awk '{print $1 " " $2}')
+
+  echo "Connection to etcd failed at: $FIRST_FAILURE"
+  echo "Connection to etcd restored at: $LAST_RECOVERY"
+fi
+
+# Parse trace logs and find top time-consuming requests
+echo ""
+echo "Top 10 Time-Consuming Requests:"
+grep "Trace" "$LOG_FILE" | awk '
+/verb:/ && /total time:/ {
+    match($0, /verb:([A-Z]+)/, verb);          # Extract HTTP method
+    match($0, /resource:([a-zA-Z-]+)/, resource); # Extract resource type
+    match($0, /url:([^,]+)/, url);             # Extract target URL
+    match($0, /total time: ([0-9]+)ms/, time); # Extract request time
+    if (verb[1] && resource[1] && time[1]) {
+        print time[1], verb[1], resource[1], url[1];
+    }
+}' | sort -nr | head -n 10 | while read -r time verb resource url; do
+    echo "Time(ms): $time | Method: $verb | Resource: $resource | URL: $url"
+done

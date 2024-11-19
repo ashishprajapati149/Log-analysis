@@ -16,21 +16,23 @@ fi
 
 # Parse etcd connectivity issues
 echo "Analyzing etcd connectivity issues..."
+
+# Extract lines with etcd connection errors
 ETCD_ERRORS=$(grep "grpc: addrConn.createTransport failed to connect" "$LOG_FILE")
 
 if [ -z "$ETCD_ERRORS" ]; then
   echo "No etcd connectivity issues found."
 else
   echo "etcd connectivity issues detected."
-  
-  # Extract the first and last occurrence of connection failures
-  FIRST_FAILURE=$(echo "$ETCD_ERRORS" | head -n 1 | awk '{print $1 " " $2}')
-  LAST_RECOVERY=$(grep -A 1 "grpc: addrConn.createTransport failed to connect" "$LOG_FILE" | \
-                  grep -v "grpc: addrConn.createTransport failed to connect" | \
-                  head -n 1 | awk '{print $1 " " $2}')
 
-  echo "Connection to etcd failed at: $FIRST_FAILURE"
-  echo "Connection to etcd restored at: $LAST_RECOVERY"
+  # Extract the first failure timestamp
+  FIRST_FAILURE=$(echo "$ETCD_ERRORS" | head -n 1 | awk '{print $1 " " $2}')
+
+  # Extract the last failure timestamp
+  LAST_FAILURE=$(echo "$ETCD_ERRORS" | tail -n 1 | awk '{print $1 " " $2}')
+
+  echo "First connection failure to etcd occurred at: $FIRST_FAILURE"
+  echo "Last connection failure to etcd occurred at: $LAST_FAILURE"
 fi
 
 # Parse trace logs and find top time-consuming requests
